@@ -31,5 +31,21 @@ pub mod rebalancer {
     ) -> Result<()> {
         instructions::register_strategy(ctx, strategy_id, protocol_type, initial_balance)
     }
+
+    pub fn update_performance(
+        ctx: Context<UpdatePerformance>,
+        strategy_id: Pubkey,
+        yield_rate: u64,
+        volatility_score: u32,
+        current_balance: u64,
+    ) -> Result<()> {
+        instructions::update_performance(ctx, strategy_id, yield_rate, volatility_score, current_balance)
+    }
+
+    pub fn execute_ranking_cycle(
+        ctx: Context<ExecuteRankingCycle>,
+    ) -> Result<()> {
+        instructions::execute_ranking_cycle(ctx)
+    }
 }
 
