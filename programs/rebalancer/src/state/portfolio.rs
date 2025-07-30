@@ -44,7 +44,7 @@ impl Portfolio {
     }
     
     pub fn validate_min_interval(interval: i64) -> Result<()> {
-        require!(interval >= 3600 && interval <= 86400, RebalancerErrorCode::InvalidRebalanceInterval);
+        require!(interval >= 1 && interval <= 86400, RebalancerErrorCode::InvalidRebalanceInterval);
         Ok(())
     }
 }

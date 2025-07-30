@@ -44,3 +44,18 @@ impl CapitalPosition {
     + 14; // reserved 
     // 128 bytes
 }
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct CapitalAllocation {
+    pub strategy_id: Pubkey,
+    pub amount: u64,
+    pub allocation_type: AllocationType,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
+pub enum AllocationType {
+    TopPerformer,
+    RiskDiversification,
+    ManagerIncentive,
+    PlatformFee,
+}

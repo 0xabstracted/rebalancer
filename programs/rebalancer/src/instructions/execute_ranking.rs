@@ -68,7 +68,7 @@ pub fn calculate_percentile_rankings(strategies: &mut Vec<StrategyData>) -> Resu
         };
         
         // IDENTIFY BOTTOM PERFORMERS BASED ON PORTFOLIO THRESHOLD
-        let bottom_threshold_rank = if total_strategies <= 4 {
+        let _bottom_threshold_rank = if total_strategies <= 4 {
             // For small portfolios, only rebalance bottom 25% if rank is 0
             0u8
         } else {

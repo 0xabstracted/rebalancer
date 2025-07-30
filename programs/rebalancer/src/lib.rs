@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::state::ProtocolType;
+use crate::state::{ProtocolType, CapitalAllocation};
 
 declare_id!("H5sewgM4P61yo75GtnbsVcevhEAVKpoRxJjsHWXoNYV7");
 
@@ -47,5 +47,20 @@ pub mod rebalancer {
     ) -> Result<()> {
         instructions::execute_ranking_cycle(ctx)
     }
+
+    pub fn extract_capital(
+        ctx: Context<ExtractCapital>,
+        strategy_ids: Vec<Pubkey>,
+    ) -> Result<()> {
+        instructions::extract_capital(ctx, strategy_ids)
+    }
+    
+    pub fn redistribute_capital(
+        ctx: Context<RedistributeCapital>, 
+        allocations: Vec<CapitalAllocation>,
+    ) -> Result<()> {
+        instructions::redistribute_capital(ctx, allocations)
+    }
+    
 }
 

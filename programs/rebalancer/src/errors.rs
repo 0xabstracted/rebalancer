@@ -74,4 +74,15 @@ pub enum RebalancerErrorCode {
     #[msg("Insufficient strategies for rebalancing (minimum 2 required)")]
     InsufficientStrategies,
     
+    #[msg("Too many strategies for single operation (max 10)")]
+    TooManyStrategies,
+
+    #[msg("Invalid protocol type for operation")]
+    InvalidProtocolType,
+
+    #[msg("Duplicate strategy in allocation")]
+    DuplicateStrategy,
+
+    #[msg("Invalid performance score for calculation")]
+    InvalidPerformanceScore,
 }
