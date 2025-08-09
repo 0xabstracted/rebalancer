@@ -6,6 +6,7 @@ declare_id!("H5sewgM4P61yo75GtnbsVcevhEAVKpoRxJjsHWXoNYV7");
 pub mod state;
 pub mod instructions;
 pub mod errors;
+pub mod utils;
 
 use instructions::*;
 
@@ -17,10 +18,10 @@ pub mod rebalancer {
     pub fn initialize_portfolio(
         ctx: Context<InitializePortfolio>,
         manager: Pubkey,
-        rebalance_threshold: u8,
+        base_threshold: u8,
         min_rebalance_interval: i64,
     ) -> Result<()> {
-        instructions::initialize_portfolio(ctx, manager, rebalance_threshold, min_rebalance_interval)
+        instructions::initialize_portfolio(ctx, manager, base_threshold, min_rebalance_interval)
     }
     
     pub fn register_strategy(

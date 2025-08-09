@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
 use crate::errors::*;
+use crate::utils::{calculate_average_volatility, calculate_dynamic_threshold};
 
 #[derive(Accounts)]
 pub struct ExecuteRankingCycle<'info> {
@@ -42,7 +43,7 @@ pub fn execute_ranking_cycle(
 }
 
 // CORE PERCENTILE RANKING ALGORITHM
-pub fn calculate_percentile_rankings(strategies: &mut Vec<StrategyData>) -> Result<Vec<Pubkey>> {
+pub fn calculate_percentile_rankings(strategies: &mut Vec<StrategyData>, base_threshold: u8) -> Result<Vec<Pubkey>> {
     require!(!strategies.is_empty(), RebalancerErrorCode::InsufficientStrategies);
     
     // SORT STRATEGIES BY PERFORMANCE SCORE (DESCENDING - HIGHEST FIRST)
@@ -54,6 +55,13 @@ pub fn calculate_percentile_rankings(strategies: &mut Vec<StrategyData>) -> Resu
     
     let total_strategies = strategies.len();
     let mut underperformers = Vec::new();
+    
+    // CALCULATE DYNAMIC THRESHOLD BASED ON AVERAGE VOLATILITY
+    let average_volatility = calculate_average_volatility(strategies)?;
+    let dynamic_threshold = calculate_dynamic_threshold(base_threshold, average_volatility)?;
+    
+    msg!("Dynamic threshold calculated: {}% (base: {}%, avg volatility: {})",
+         dynamic_threshold, base_threshold, average_volatility);
     
     // ASSIGN PERCENTILE RANKS AND IDENTIFY UNDERPERFORMERS
     for (index, strategy_data) in strategies.iter_mut().enumerate() {
@@ -67,13 +75,13 @@ pub fn calculate_percentile_rankings(strategies: &mut Vec<StrategyData>) -> Resu
             ((rank_from_bottom * 100) / (total_strategies - 1)) as u8
         };
         
-        // IDENTIFY BOTTOM PERFORMERS BASED ON PORTFOLIO THRESHOLD
+        // IDENTIFY BOTTOM PERFORMERS BASED ON DYNAMIC THRESHOLD
         let _bottom_threshold_rank = if total_strategies <= 4 {
             // For small portfolios, only rebalance bottom 25% if rank is 0
             0u8
         } else {
-            // For larger portfolios, use configured threshold percentage
-            let threshold_strategies = (total_strategies * strategy_data.rebalance_threshold as usize) / 100;
+            // For larger portfolios, use dynamic threshold percentage
+            let threshold_strategies = (total_strategies * dynamic_threshold as usize) / 100;
             let threshold_strategies = threshold_strategies.max(1); // At least 1 strategy
             
             if index >= total_strategies - threshold_strategies {
@@ -84,11 +92,12 @@ pub fn calculate_percentile_rankings(strategies: &mut Vec<StrategyData>) -> Resu
             ((threshold_strategies * 100) / total_strategies) as u8
         };
         
-        msg!("Strategy {} ranked: percentile={}%, score={}, balance={}", 
-             strategy_data.strategy_id, 
-             strategy_data.percentile_rank, 
+        msg!("Strategy {} ranked: percentile={}%, score={}, balance={}, volatility={}",
+             strategy_data.strategy_id,
+             strategy_data.percentile_rank,
              strategy_data.performance_score,
-             strategy_data.current_balance);
+             strategy_data.current_balance,
+             strategy_data.volatility_score);
     }
     
     Ok(underperformers)
@@ -102,18 +111,16 @@ pub struct StrategyData {
     pub current_balance: u64,
     pub volatility_score: u32,
     pub percentile_rank: u8,
-    pub rebalance_threshold: u8,
 }
 
 impl StrategyData {
-    pub fn from_strategy(strategy: &Strategy, rebalance_threshold: u8) -> Self {
+    pub fn from_strategy(strategy: &Strategy) -> Self {
         StrategyData {
             strategy_id: strategy.strategy_id,
             performance_score: strategy.performance_score,
             current_balance: strategy.current_balance,
             volatility_score: strategy.volatility_score,
             percentile_rank: strategy.percentile_rank,
-            rebalance_threshold,
         }
     }
 }
@@ -121,23 +128,28 @@ impl StrategyData {
 // REBALANCING TRIGGER LOGIC
 pub fn should_rebalance_strategy(
     strategy: &Strategy,
-    portfolio_threshold: u8,
-) -> bool {
+    strategies: &[StrategyData],
+    base_threshold: u8,
+) -> Result<bool> {
     // Strategy qualifies for rebalancing if:
-    // 1. It's in the bottom percentile based on portfolio threshold
+    // 1. It's in the bottom percentile based on dynamic threshold
     // 2. It has sufficient balance to make rebalancing worthwhile
     // 3. It's currently active
     
     if strategy.status != StrategyStatus::Active {
-        return false;
+        return Ok(false);
     }
     
     if strategy.current_balance < 50_000_000 { // 0.05 SOL minimum threshold
-        return false;
+        return Ok(false);
     }
     
+    // Calculate dynamic threshold based on average volatility
+    let average_volatility = calculate_average_volatility(strategies)?;
+    let dynamic_threshold = calculate_dynamic_threshold(base_threshold, average_volatility)?;
+    
     // Check if strategy is in bottom percentile
-    strategy.percentile_rank < portfolio_threshold
+    Ok(strategy.percentile_rank < dynamic_threshold)
 }
 
 #[cfg(test)]
@@ -154,7 +166,6 @@ mod tests {
                 current_balance: 1_000_000_000,
                 volatility_score: 2000,
                 percentile_rank: 0,
-                rebalance_threshold: 25,
             },
             StrategyData {
                 strategy_id: Pubkey::new_unique(),
@@ -162,7 +173,6 @@ mod tests {
                 current_balance: 2_000_000_000,
                 volatility_score: 4000,
                 percentile_rank: 0,
-                rebalance_threshold: 25,
             },
             StrategyData {
                 strategy_id: Pubkey::new_unique(),
@@ -170,11 +180,10 @@ mod tests {
                 current_balance: 500_000_000,
                 volatility_score: 6000,
                 percentile_rank: 0,
-                rebalance_threshold: 25,
             },
         ];
         
-        let underperformers = calculate_percentile_rankings(&mut strategies).unwrap();
+        let underperformers = calculate_percentile_rankings(&mut strategies, 15).unwrap();
         
         // Verify ranking order (highest score = highest percentile)
         assert!(strategies[0].percentile_rank > strategies[1].percentile_rank);
@@ -194,7 +203,6 @@ mod tests {
                 current_balance: 2_000_000_000, // Higher balance
                 volatility_score: 3000,
                 percentile_rank: 0,
-                rebalance_threshold: 25,
             },
             StrategyData {
                 strategy_id: Pubkey::new_unique(),
@@ -202,11 +210,10 @@ mod tests {
                 current_balance: 1_000_000_000, // Lower balance
                 volatility_score: 3000,
                 percentile_rank: 0,
-                rebalance_threshold: 25,
             },
         ];
         
-        calculate_percentile_rankings(&mut strategies).unwrap();
+        calculate_percentile_rankings(&mut strategies, 15).unwrap();
         
         // Higher balance should win the tiebreaker
         assert!(strategies[0].percentile_rank > strategies[1].percentile_rank);
@@ -223,11 +230,10 @@ mod tests {
                 current_balance: 1_000_000_000,
                 volatility_score: 3000,
                 percentile_rank: 0,
-                rebalance_threshold: 25,
             }
         ];
         
-        let underperformers = calculate_percentile_rankings(&mut single_strategy).unwrap();
+        let underperformers = calculate_percentile_rankings(&mut single_strategy, 15).unwrap();
         assert_eq!(single_strategy[0].percentile_rank, 50); // Median rank
         assert_eq!(underperformers.len(), 0); // No rebalancing for single strategy
     }

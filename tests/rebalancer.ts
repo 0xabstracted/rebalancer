@@ -19,7 +19,7 @@ describe("rebalancer", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(3600) // 1 hour minimum interval
       )
       .accounts({
@@ -32,7 +32,7 @@ describe("rebalancer", () => {
 
     const portfolio = await program.account.portfolio.fetch(portfolioPda);
     expect(portfolio.manager.toString()).to.equal(manager.publicKey.toString());
-    expect(portfolio.rebalanceThreshold).to.equal(25);
+    expect(portfolio.baseThreshold).to.equal(15);
     expect(portfolio.totalStrategies).to.equal(0);
   });
 
@@ -59,7 +59,7 @@ describe("rebalancer", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(3600) // 1 hour minimum interval
       )
       .accounts({
@@ -125,7 +125,7 @@ describe("rebalancer", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(3600) // 1 hour minimum interval
       )
       .accounts({
@@ -189,7 +189,7 @@ describe("rebalancer", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(3600) // 1 hour minimum interval
       )
       .accounts({
@@ -233,6 +233,52 @@ describe("rebalancer", () => {
   });
 });
 
+// Dynamic Threshold tests (Task 4)
+describe("dynamic threshold calculation", () => {
+  // Mirror on-chain formula in TypeScript for test verification and documentation
+  const calcDynamicThreshold = (base: number, volAvgBps: number) => {
+    if (base < 0 || base > 100) throw new Error("invalid base");
+    const adjustment = Math.floor((volAvgBps * 20) / 10000); // integer percent points
+    const threshold = base + adjustment;
+    return Math.min(40, Math.max(10, threshold));
+  };
+
+  it("low volatility (avg 20%) → threshold ~19%", () => {
+    const base = 15;
+    const avgVol = 2000; // 20%
+    const t = calcDynamicThreshold(base, avgVol);
+    expect(t).to.equal(19);
+  });
+
+  it("medium volatility (avg 50%) → threshold ~25%", () => {
+    const base = 15;
+    const avgVol = 5000; // 50%
+    const t = calcDynamicThreshold(base, avgVol);
+    expect(t).to.equal(25);
+  });
+
+  it("high volatility (avg 80%) → threshold ~31%", () => {
+    const base = 15;
+    const avgVol = 8000; // 80%
+    const t = calcDynamicThreshold(base, avgVol);
+    expect(t).to.equal(31);
+  });
+
+  it("clamps minimum to 10%", () => {
+    const base = 5; // below min, even with 0 adj
+    const avgVol = 0; // 0%
+    const t = calcDynamicThreshold(base, avgVol);
+    expect(t).to.equal(10);
+  });
+
+  it("clamps maximum to 40%", () => {
+    const base = 15;
+    const avgVol = 15000; // 150% (beyond cap), adj = floor(15000*20/10000)=30 → 45
+    const t = calcDynamicThreshold(base, avgVol);
+    expect(t).to.equal(40);
+  });
+});
+
 describe("rebalancer performance scoring", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -266,7 +312,7 @@ describe("rebalancer performance scoring", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(3600) // 1 hour minimum interval (valid range: 3600-86400)
       )
       .accounts({
@@ -707,7 +753,7 @@ describe("rebalancer complete workflow", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(1) // 1 second minimum interval for testing
       )
       .accounts({
@@ -1258,7 +1304,7 @@ describe("rebalancer capital extraction and redistribution", () => {
     await program.methods
       .initializePortfolio(
         manager.publicKey,
-        25, // 25% rebalance threshold
+        15, // 15% base threshold (for dynamic calculation)
         new anchor.BN(1) // 1 second minimum interval for testing
       )
       .accounts({

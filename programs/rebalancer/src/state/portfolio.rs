@@ -12,7 +12,7 @@ pub struct Portfolio {
     pub portfolio_creation: i64,            // 8 bytes - Portfolio creation timestamp
     pub total_strategies: u32,              // 4 bytes - Current strategy count
     pub performance_fee_bps: u16,           // 2 bytes - Performance fee in basis points
-    pub rebalance_threshold: u8,            // 1 byte - Bottom % for reallocation (1-50)
+    pub base_threshold: u8,                 // 1 byte - Base threshold for dynamic calculation (1-50)
     pub emergency_pause: bool,              // 1 byte - Emergency stop flag
     pub bump: u8,                           // 1 byte - PDA bump seed
     pub reserved: [u8; 31],                 // 31 bytes - Future expansion buffer
@@ -33,7 +33,7 @@ impl Portfolio {
     + 1 // bump
     + 31; // reserved
     // 112 bytes
-    pub fn validate_rebalance_threshold(threshold: u8) -> Result<()> {
+    pub fn validate_base_threshold(threshold: u8) -> Result<()> {
         require!(threshold >= 1 && threshold <= 50, RebalancerErrorCode::InvalidRebalanceThreshold);
         Ok(())
     }

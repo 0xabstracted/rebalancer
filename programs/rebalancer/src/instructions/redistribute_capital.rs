@@ -1,6 +1,14 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
 use crate::errors::*;
+use crate::utils::calculate_dynamic_threshold;
+
+// Risk/fee configuration defaults (basis points)
+const MAX_SINGLE_STRATEGY_BPS: u64 = 4000; // 40%
+const MIN_SINGLE_STRATEGY_BPS: u64 = 100;  // 1%
+const PLATFORM_FEE_BPS: u64 = 50;          // 0.5%
+const MANAGER_FEE_BPS: u64 = 150;          // 1.5%
+const RISK_TOLERANCE_BPS: u64 = 8000;      // 80%
 
 #[derive(Accounts)]
 #[instruction(allocations: Vec<CapitalAllocation>)]
@@ -239,11 +247,11 @@ pub struct RiskLimits {
 impl Default for RiskLimits {
     fn default() -> Self {
         RiskLimits {
-            max_single_strategy_bps: 4000,    // 40% max single strategy
-            min_single_strategy_bps: 100,     // 1% minimum allocation
-            platform_fee_bps: 50,             // 0.5% platform fee
-            manager_fee_bps: 150,              // 1.5% manager fee
-            risk_tolerance_bps: 8000,          // 80% risk tolerance (conservative)
+            max_single_strategy_bps: MAX_SINGLE_STRATEGY_BPS,    // 40% max single strategy
+            min_single_strategy_bps: MIN_SINGLE_STRATEGY_BPS,     // 1% minimum allocation
+            platform_fee_bps: PLATFORM_FEE_BPS,             // 0.5% platform fee
+            manager_fee_bps: MANAGER_FEE_BPS,              // 1.5% manager fee
+            risk_tolerance_bps: RISK_TOLERANCE_BPS,          // 80% risk tolerance (conservative)
             platform_treasury: Pubkey::default(),
             manager_treasury: Pubkey::default(),
         }
@@ -256,9 +264,20 @@ pub fn execute_complete_rebalancing(
     strategies: &[StrategyPerformanceData],
 ) -> Result<RebalancingPlan> {
     // STEP 1: IDENTIFY UNDERPERFORMERS
+    // Calculate average volatility across provided strategies (basis points)
+    require!(!strategies.is_empty(), RebalancerErrorCode::InsufficientStrategies);
+    let total_volatility: u64 = strategies
+        .iter()
+        .map(|s| s.volatility_score as u64)
+        .sum();
+    let average_volatility: u32 = (total_volatility / strategies.len() as u64) as u32;
+
+    // Compute dynamic threshold using portfolio base threshold
+    let dynamic_threshold = calculate_dynamic_threshold(portfolio.base_threshold, average_volatility)?;
+
     let underperformers: Vec<StrategyPerformanceData> = strategies
         .iter()
-        .filter(|s| s.percentile_rank < portfolio.rebalance_threshold)
+        .filter(|s| s.percentile_rank < dynamic_threshold)
         .cloned()
         .collect();
     
@@ -426,7 +445,7 @@ mod tests {
     fn test_rebalancing_plan_generation() {
         let portfolio = Portfolio {
             manager: Pubkey::new_unique(),
-            rebalance_threshold: 25,
+            base_threshold: 15, // Updated to use base_threshold
             total_strategies: 5,
             total_capital_moved: 0,
             last_rebalance: 0,
